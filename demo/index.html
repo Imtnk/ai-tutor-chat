@@ -32,6 +32,18 @@
     border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer;
   }
   .theme-toggle:hover{ opacity: .85; }
+
+  .demo-section{ border: 1px solid var(--demo-line); border-radius: 10px; padding: 16px; margin-top: 20px; }
+  .demo-section h2{ margin: 0 0 10px; font-size: 16px; }
+  .demo-label{ display: block; font-size: 12px; color: var(--demo-muted); margin-top: 10px; }
+  .demo-select, .demo-input, .demo-textarea{
+    display: block; width: 100%; box-sizing: border-box; margin-top: 4px;
+    background: var(--demo-bg); color: var(--demo-text); border: 1px solid var(--demo-line);
+    border-radius: 8px; padding: 9px 10px; font: inherit; font-size: 14px;
+  }
+  .demo-textarea{ resize: vertical; font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .demo-small{ font-size: 12px; margin: 10px 0 0; }
+  .demo-small.ok{ color: #3d8b5f; }
 </style>
 </head>
 <body>
@@ -47,6 +59,26 @@
     <li><strong>Custom</strong> — any OpenAI-compatible Base URL.</li>
   </ul>
   <p><strong>Must be served over <code>http://localhost</code>, not <code>file://</code></strong> — local LLM servers block <code>file://</code> origins via CORS.</p>
+
+  <div class="demo-section">
+    <h2>AI role</h2>
+    <p class="demo-small" style="margin-top:0">Change what the tutor is scoped to. This only changes the assistant's role/behavior — it's separate from the provider settings (⚙️) inside the chat panel.</p>
+    <label class="demo-label" for="subjectPreset">Preset</label>
+    <select class="demo-select" id="subjectPreset">
+      <option value="exampleCC">CC Tutor (default)</option>
+      <option value="custom">Custom</option>
+    </select>
+    <div id="customSubjectFields" hidden>
+      <label class="demo-label" for="subjectName">Name</label>
+      <input class="demo-input" id="subjectName" placeholder="e.g. Spanish Tutor">
+      <label class="demo-label" for="subjectPrompt">System prompt</label>
+      <textarea class="demo-textarea" id="subjectPrompt" rows="6" placeholder="You are a tutor for &lt;SUBJECT&gt;. Answer only questions within &lt;SCOPE&gt;.&#10;Include {{CONTEXT}} somewhere to receive injected context."></textarea>
+    </div>
+    <div class="demo-topbar" style="margin-top:12px">
+      <button class="theme-toggle" id="applySubject" type="button">Apply</button>
+      <span class="demo-small" id="subjectApplyOut"></span>
+    </div>
+  </div>
 
   <script src="../tutor-chat.js"></script>
   <script src="../subjects/example-cc.js"></script>
@@ -73,9 +105,61 @@
       };
     })();
 
-    TutorChat.mount(document.body, {
-      subject: window.TutorSubjects.exampleCC
-    });
+    // AI role setting: switch the mounted subject (name + system prompt)
+    // between the default CC Tutor and a user-defined custom role.
+    // Independent of the widget's own AI-provider Settings (⚙️).
+    (function(){
+      var SUBJECT_KEY = "tutorchat-demo-subject";
+      var presetEl = document.getElementById("subjectPreset");
+      var customFields = document.getElementById("customSubjectFields");
+      var nameEl = document.getElementById("subjectName");
+      var promptEl = document.getElementById("subjectPrompt");
+      var applyBtn = document.getElementById("applySubject");
+      var out = document.getElementById("subjectApplyOut");
+      var chatInstance = null;
+
+      function loadSaved(){
+        try{ return JSON.parse(localStorage.getItem(SUBJECT_KEY)) || null; }catch(e){ return null; }
+      }
+      function save(state){ localStorage.setItem(SUBJECT_KEY, JSON.stringify(state)); }
+
+      function subjectFromState(state){
+        if(!state || state.preset !== "custom") return window.TutorSubjects.exampleCC;
+        return {
+          name: (state.name || "").trim() || "Custom Tutor",
+          systemTemplate: (state.prompt || "").trim() || "You are a helpful tutor.\n{{CONTEXT}}"
+        };
+      }
+
+      function paintForm(state){
+        presetEl.value = (state && state.preset === "custom") ? "custom" : "exampleCC";
+        customFields.hidden = presetEl.value !== "custom";
+        nameEl.value = (state && state.name) || "";
+        promptEl.value = (state && state.prompt) || "";
+      }
+
+      function mountSubject(subject){
+        if(chatInstance) chatInstance.destroy();
+        chatInstance = TutorChat.mount(document.body, { subject: subject });
+      }
+
+      presetEl.onchange = function(){ customFields.hidden = presetEl.value !== "custom"; };
+
+      applyBtn.onclick = function(){
+        var state = { preset: presetEl.value, name: nameEl.value, prompt: promptEl.value };
+        if(state.preset === "custom" && !promptEl.value.trim()){
+          out.textContent = "Enter a system prompt first."; out.className = "demo-small";
+          return;
+        }
+        save(state);
+        mountSubject(subjectFromState(state));
+        out.textContent = "✓ Applied — reopen the panel to see it in effect."; out.className = "demo-small ok";
+      };
+
+      var saved = loadSaved();
+      paintForm(saved);
+      mountSubject(subjectFromState(saved));
+    })();
   </script>
 </body>
 </html>
