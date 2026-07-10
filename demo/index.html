@@ -6,12 +6,39 @@
 <title>AI Tutor Chat — Demo</title>
 <link rel="stylesheet" href="../tutor-chat.css">
 <style>
-  body{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
-  code{ background: rgba(127,127,127,.15); padding: 2px 6px; border-radius: 4px; }
+  :root{
+    --demo-bg: #ffffff;
+    --demo-text: #16181c;
+    --demo-muted: #6b7280;
+    --demo-line: #e2e4e8;
+    --demo-code-bg: rgba(127,127,127,.15);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --demo-bg: #17191d; --demo-text: #f2f3f5; --demo-muted: #9aa0a8; --demo-line: #2c2f35; --demo-code-bg: rgba(255,255,255,.08); }
+  }
+  :root[data-theme="dark"]{ --demo-bg: #17191d; --demo-text: #f2f3f5; --demo-muted: #9aa0a8; --demo-line: #2c2f35; --demo-code-bg: rgba(255,255,255,.08); }
+  :root[data-theme="light"]{ --demo-bg: #ffffff; --demo-text: #16181c; --demo-muted: #6b7280; --demo-line: #e2e4e8; --demo-code-bg: rgba(127,127,127,.15); }
+
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.5;
+    background: var(--demo-bg); color: var(--demo-text);
+  }
+  a{ color: inherit; }
+  code{ background: var(--demo-code-bg); padding: 2px 6px; border-radius: 4px; }
+  .demo-topbar{ display: flex; justify-content: space-between; align-items: center; }
+  .theme-toggle{
+    background: var(--demo-bg); color: var(--demo-text); border: 1px solid var(--demo-line);
+    border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer;
+  }
+  .theme-toggle:hover{ opacity: .85; }
 </style>
 </head>
 <body>
-  <h1>AI Tutor Chat — Demo</h1>
+  <div class="demo-topbar">
+    <h1>AI Tutor Chat — Demo</h1>
+    <button class="theme-toggle" id="pageThemeToggle" type="button">🌓 Toggle theme</button>
+  </div>
   <p>Click the ✦ button in the bottom-right corner to open the tutor panel.</p>
   <p>This demo uses the <code>example-cc</code> subject profile (ISC² CC exam tutor). Open Settings (⚙️) inside the panel to pick a provider:</p>
   <ul>
@@ -24,6 +51,28 @@
   <script src="../tutor-chat.js"></script>
   <script src="../subjects/example-cc.js"></script>
   <script>
+    // Page-level dark-mode toggle. Applies to this demo page and, via the
+    // data-theme selectors in tutor-chat.css, to the widget too — the
+    // widget's own AI-provider Settings panel (⚙️ inside the chat) is
+    // untouched by this.
+    (function(){
+      var THEME_KEY = "tutorchat-demo-theme";
+      var root = document.documentElement;
+      function apply(theme){
+        if(theme === "dark" || theme === "light") root.setAttribute("data-theme", theme);
+        else root.removeAttribute("data-theme");
+      }
+      apply(localStorage.getItem(THEME_KEY));
+      document.getElementById("pageThemeToggle").onclick = function(){
+        var current = root.getAttribute("data-theme");
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var currentlyDark = current ? current === "dark" : prefersDark;
+        var next = currentlyDark ? "light" : "dark";
+        apply(next);
+        localStorage.setItem(THEME_KEY, next);
+      };
+    })();
+
     TutorChat.mount(document.body, {
       subject: window.TutorSubjects.exampleCC
     });

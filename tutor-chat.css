@@ -21,6 +21,22 @@
     --tc-card: rgba(255,255,255,.06);
   }
 }
+/* Explicit theme toggle (e.g. a page-level dark-mode switch) wins over
+   the OS preference above — stamp data-theme="dark"/"light" on <html>. */
+:root[data-theme="dark"] .tc-root{
+  --tc-bg: #17191d;
+  --tc-text: #f2f3f5;
+  --tc-muted: #9aa0a8;
+  --tc-line: #2c2f35;
+  --tc-card: rgba(255,255,255,.06);
+}
+:root[data-theme="light"] .tc-root{
+  --tc-bg: #ffffff;
+  --tc-text: #16181c;
+  --tc-muted: #6b7280;
+  --tc-line: #e2e4e8;
+  --tc-card: rgba(127,127,127,.10);
+}
 
 .tc-fab{
   position: fixed; right: 16px; bottom: 16px; z-index: 998;
