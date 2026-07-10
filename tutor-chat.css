@@ -72,6 +72,31 @@
 .tc-msg.assistant{ align-self: flex-start; background: var(--tc-card); color: var(--tc-text); }
 .tc-msg.error{ align-self: flex-start; border: 1px solid var(--tc-danger); color: var(--tc-danger); }
 
+.tc-msg.tc-typing{ display: flex; align-items: center; gap: 4px; padding: 12px 14px; }
+.tc-dot{
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .35;
+  animation: tc-bounce 1.2s infinite ease-in-out;
+}
+.tc-dot:nth-child(2){ animation-delay: .15s; }
+.tc-dot:nth-child(3){ animation-delay: .3s; }
+@keyframes tc-bounce{
+  0%, 60%, 100%{ transform: translateY(0); opacity: .35; }
+  30%{ transform: translateY(-4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce){
+  .tc-dot{ animation: none; opacity: .7; }
+}
+
+.tc-spinner{
+  display: inline-block; width: 14px; height: 14px; vertical-align: -3px;
+  border: 2px solid transparent; border-top-color: currentColor; border-right-color: currentColor;
+  border-radius: 50%; animation: tc-spin .6s linear infinite;
+}
+@keyframes tc-spin{ to{ transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce){
+  .tc-spinner{ animation-duration: 1.4s; }
+}
+
 .tc-inputrow{
   display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--tc-line);
   padding-bottom: calc(12px + env(safe-area-inset-bottom));
@@ -81,6 +106,8 @@
   border-radius: 10px; padding: 11px 12px; min-height: 44px; font-size: 15px;
 }
 .tc-text:focus{ outline: 2px solid var(--tc-accent); outline-offset: 1px; }
+.tc-text:disabled{ opacity: .6; }
+.tc-btn:disabled{ opacity: .7; cursor: default; }
 
 .tc-field{
   display: block; width: 100%; background: var(--tc-bg); color: var(--tc-text); border: 1px solid var(--tc-line);

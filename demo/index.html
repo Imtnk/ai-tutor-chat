@@ -190,8 +190,14 @@
           return;
         }
         generateBtn.disabled = true;
-        generateOut.textContent = "Generating…"; generateOut.className = "demo-small";
         promptEl.value = "";
+        var startedAt = Date.now();
+        var tickTimer = setInterval(function(){
+          var secs = Math.round((Date.now() - startedAt) / 1000);
+          generateOut.textContent = "Generating… (" + secs + "s — local reasoning models can take 30-90s+)";
+          generateOut.className = "demo-small";
+        }, 1000);
+        generateOut.textContent = "Generating…"; generateOut.className = "demo-small";
         try{
           var client = TutorChat.createClient(cfg);
           var sys = "You write concise system prompts for AI tutor chatbots. Output ONLY the system prompt text — no commentary, no markdown code fences.";
@@ -208,11 +214,13 @@
           if(!finalText) throw new Error("Empty response.");
           if(finalText.indexOf("{{CONTEXT}}") < 0) finalText += "\n{{CONTEXT}}";
           promptEl.value = finalText;
-          generateOut.textContent = "✓ Generated — review, then click Apply."; generateOut.className = "demo-small ok";
+          var elapsed = Math.round((Date.now() - startedAt) / 1000);
+          generateOut.textContent = "✓ Generated in " + elapsed + "s — review, then click Apply."; generateOut.className = "demo-small ok";
         }catch(err){
           generateOut.textContent = "✗ " + (err && err.message ? err.message : "Failed to generate.");
           generateOut.className = "demo-small";
         }finally{
+          clearInterval(tickTimer);
           generateBtn.disabled = false;
         }
       };

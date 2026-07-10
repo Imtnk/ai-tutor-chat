@@ -16,10 +16,12 @@ window.TutorChat = (function(){
 
   // Local "thinking" models (e.g. Qwen3.x) can burn most/all of their output
   // budget on internal reasoning before ever emitting a real answer. This
-  // instruction measurably cuts reasoning length (~3x shorter in testing)
-  // when appended to a system prompt. Exposed for callers (e.g. a one-off
-  // generation request) to opt into per-request — not applied automatically.
-  var THINKING_FIX_HINT = "Do not overthink. Reply directly and concisely. If multiple options come to mind, pick one immediately — do not reconsider your answer more than once before responding.";
+  // instruction measurably shortens reasoning when appended to a system
+  // prompt (~10-70% depending on task complexity in testing) but does not
+  // eliminate the reasoning phase — these models can still take 30-90+s on
+  // non-trivial requests. Exposed for callers (e.g. a one-off generation
+  // request) to opt into per-request — not applied automatically.
+  var THINKING_FIX_HINT = "Do not overthink. Skip step-by-step deliberation entirely and answer directly. Keep any internal reasoning to at most one short sentence.";
 
   function resolvePreset(presets, name){
     return (presets && presets[name]) || presets.custom || DEFAULT_PRESETS.custom;
@@ -82,7 +84,7 @@ window.TutorChat = (function(){
 
     async function once(messages, opts){
       opts = opts || {};
-      var body = { model: config.model, messages: messages, stream: !!opts.onToken, max_tokens: config.maxTokens || 4096 };
+      var body = { model: config.model, messages: messages, stream: !!opts.onToken, max_tokens: config.maxTokens || 8192 };
       if(opts.tools && opts.tools.length) body.tools = opts.tools;
       var resp;
       try{
@@ -94,10 +96,13 @@ window.TutorChat = (function(){
 
       if(!opts.onToken){
         var data = await resp.json();
-        return data.choices && data.choices[0] && data.choices[0].message || {};
+        var choice = (data.choices && data.choices[0]) || {};
+        var msg0 = choice.message || {};
+        msg0.finishReason = choice.finish_reason;
+        return msg0;
       }
       var reader = resp.body.getReader(), decoder = new TextDecoder(), buf = "";
-      var content = "", toolCalls = [];
+      var content = "", toolCalls = [], finishReason = null;
       while(true){
         var chunk = await reader.read(); if(chunk.done) break;
         buf += decoder.decode(chunk.value, { stream: true });
@@ -108,7 +113,9 @@ window.TutorChat = (function(){
           var payload = line.slice(5).trim();
           if(payload === "[DONE]") continue;
           var json; try{ json = JSON.parse(payload); }catch(e){ continue; }
-          var delta = json.choices && json.choices[0] && json.choices[0].delta || {};
+          var choiceD = (json.choices && json.choices[0]) || {};
+          if(choiceD.finish_reason) finishReason = choiceD.finish_reason;
+          var delta = choiceD.delta || {};
           if(delta.content){ content += delta.content; opts.onToken(delta.content); }
           if(delta.tool_calls){
             delta.tool_calls.forEach(function(tc){
@@ -121,7 +128,7 @@ window.TutorChat = (function(){
           }
         }
       }
-      return { content: content, tool_calls: toolCalls.filter(Boolean) };
+      return { content: content, tool_calls: toolCalls.filter(Boolean), finishReason: finishReason };
     }
 
     async function complete(messages, opts){
@@ -131,7 +138,7 @@ window.TutorChat = (function(){
       for(var round = 0; round < 4; round++){
         var msg = await once(convo, opts);
         var calls = msg.tool_calls || [];
-        if(!calls.length || !opts.runTool) return msg.content || "";
+        if(!calls.length || !opts.runTool) return finalizeContent(msg);
         convo.push({ role: "assistant", content: msg.content || "", tool_calls: calls });
         for(var c = 0; c < calls.length; c++){
           var call = calls[c], args = {};
@@ -141,7 +148,14 @@ window.TutorChat = (function(){
         }
       }
       var finalMsg = await once(convo, { onToken: opts.onToken });
-      return finalMsg.content || "";
+      return finalizeContent(finalMsg);
+    }
+
+    function finalizeContent(msg){
+      if(!msg.content && msg.finishReason === "length"){
+        throw { kind: "truncated", message: "The model ran out of output tokens while it was still \"thinking\" and never produced an answer. This is stochastic — try again, or shorten/simplify the request." };
+      }
+      return msg.content || "";
     }
 
     return { complete: complete };
@@ -214,7 +228,7 @@ window.TutorChat = (function(){
       '  <div class="tc-log"></div>' +
       '  <form class="tc-inputrow">' +
       '    <input class="tc-text" placeholder="Ask a question…" autocomplete="off">' +
-      '    <button class="tc-btn tc-btn--primary" type="submit">Send</button>' +
+      '    <button class="tc-btn tc-btn--primary" data-role="sendBtn" type="submit"><span data-role="sendLabel">Send</span></button>' +
       '  </form>' +
       '</div>';
     container.appendChild(root);
@@ -235,6 +249,8 @@ window.TutorChat = (function(){
     };
     var testBtn = root.querySelector('[data-role="test"]');
     var testOut = root.querySelector('[data-role="testOut"]');
+    var sendBtn = root.querySelector('[data-role="sendBtn"]');
+    var sendLabel = root.querySelector('[data-role="sendLabel"]');
 
     var chatBusy = false;
 
@@ -258,6 +274,19 @@ window.TutorChat = (function(){
       el.className = "tc-msg " + role;
       el.textContent = text;
       return el;
+    }
+
+    function typingMsgEl(){
+      var el = document.createElement("div");
+      el.className = "tc-msg assistant tc-typing";
+      el.innerHTML = '<span class="tc-dot"></span><span class="tc-dot"></span><span class="tc-dot"></span>';
+      return el;
+    }
+
+    function setSendBusy(busy){
+      sendBtn.disabled = busy;
+      textInput.disabled = busy;
+      sendLabel.innerHTML = busy ? '<span class="tc-spinner"></span>' : "Send";
     }
 
     function renderHistory(){
@@ -286,6 +315,7 @@ window.TutorChat = (function(){
         return;
       }
       chatBusy = true;
+      setSendBusy(true);
       var cfg = store.getConfig();
 
       store.pushMessage({ role: "user", content: text, ts: Date.now() });
@@ -298,10 +328,13 @@ window.TutorChat = (function(){
       var useSearch = !!cfg.searchOn && preset.canSearch;
 
       var acc = "";
-      var bubble = chatMsgEl("assistant", "…");
+      var bubble = typingMsgEl();
       log.appendChild(bubble); log.scrollTop = log.scrollHeight;
 
-      var opts = { onToken: function(t){ acc += t; bubble.textContent = acc; log.scrollTop = log.scrollHeight; } };
+      var opts = { onToken: function(t){
+        if(bubble.classList.contains("tc-typing")){ bubble.classList.remove("tc-typing"); bubble.innerHTML = ""; }
+        acc += t; bubble.textContent = acc; log.scrollTop = log.scrollHeight;
+      } };
       if(useSearch){
         opts.tools = [{ type: "function", function: { name: "web_search",
           description: "Search the web for current information.",
@@ -321,6 +354,7 @@ window.TutorChat = (function(){
       try{
         var reply = await createClient(cfg).complete(messages, opts);
         var finalText = acc || reply || "(no response)";
+        bubble.className = "tc-msg assistant";
         bubble.textContent = finalText;
         store.pushMessage({ role: "assistant", content: finalText, ts: Date.now() });
       }catch(err){
@@ -328,6 +362,7 @@ window.TutorChat = (function(){
         bubble.textContent = (err && err.message) ? err.message : "Something went wrong.";
       }finally{
         chatBusy = false;
+        setSendBusy(false);
       }
     }
 
