@@ -63,6 +63,7 @@
   <div class="demo-section">
     <h2>AI role</h2>
     <p class="demo-small" style="margin-top:0">Change what the tutor is scoped to. This only changes the assistant's role/behavior — it's separate from the provider settings (⚙️) inside the chat panel.</p>
+    <p class="demo-small" style="margin-top:0">Note: this only changes the system prompt — the underlying model's own safety guardrails still apply on top of it. It will still refuse disallowed requests (e.g. explicit content) no matter what the role says.</p>
     <label class="demo-label" for="subjectPreset">Preset</label>
     <select class="demo-select" id="subjectPreset">
       <option value="exampleCC">CC Tutor (default)</option>
@@ -71,8 +72,12 @@
     <div id="customSubjectFields" hidden>
       <label class="demo-label" for="subjectName">Name</label>
       <input class="demo-input" id="subjectName" placeholder="e.g. Spanish Tutor">
-      <label class="demo-label" for="subjectPrompt">System prompt</label>
+      <div class="demo-topbar" style="margin-top:10px">
+        <label class="demo-label" for="subjectPrompt" style="margin:0">System prompt</label>
+        <button class="theme-toggle" id="generatePrompt" type="button" style="padding:4px 10px;font-size:12px">✨ Generate with AI</button>
+      </div>
       <textarea class="demo-textarea" id="subjectPrompt" rows="6" placeholder="You are a tutor for &lt;SUBJECT&gt;. Answer only questions within &lt;SCOPE&gt;.&#10;Include {{CONTEXT}} somewhere to receive injected context."></textarea>
+      <p class="demo-small" id="generateOut"></p>
     </div>
     <div class="demo-topbar" style="margin-top:12px">
       <button class="theme-toggle" id="applySubject" type="button">Apply</button>
@@ -116,7 +121,22 @@
       var promptEl = document.getElementById("subjectPrompt");
       var applyBtn = document.getElementById("applySubject");
       var out = document.getElementById("subjectApplyOut");
+      var generateBtn = document.getElementById("generatePrompt");
+      var generateOut = document.getElementById("generateOut");
       var chatInstance = null;
+
+      // Reuse the AI provider the user already configured in the chat
+      // panel's own Settings (⚙️) — same localStorage config the widget
+      // itself reads, under the default "tutorchat" storage key.
+      function getProviderConfig(){
+        try{ return JSON.parse(localStorage.getItem("tutorchat.config")) || {}; }catch(e){ return {}; }
+      }
+      function isProviderConfigured(cfg){
+        var preset = TutorChat.resolvePreset(TutorChat.DEFAULT_PRESETS, cfg.preset);
+        if(!preset) return false;
+        if(preset.needsKey && !cfg.apiKey) return false;
+        return !!(cfg.baseUrl && cfg.model);
+      }
 
       function loadSaved(){
         try{ return JSON.parse(localStorage.getItem(SUBJECT_KEY)) || null; }catch(e){ return null; }
@@ -144,6 +164,45 @@
       }
 
       presetEl.onchange = function(){ customFields.hidden = presetEl.value !== "custom"; };
+
+      generateBtn.onclick = async function(){
+        var name = nameEl.value.trim();
+        if(!name){
+          generateOut.textContent = "Enter a name first."; generateOut.className = "demo-small";
+          return;
+        }
+        var cfg = getProviderConfig();
+        if(!isProviderConfigured(cfg)){
+          generateOut.textContent = "Configure an AI provider first (open the chat panel → ⚙️).";
+          generateOut.className = "demo-small";
+          return;
+        }
+        generateBtn.disabled = true;
+        generateOut.textContent = "Generating…"; generateOut.className = "demo-small";
+        promptEl.value = "";
+        try{
+          var client = TutorChat.createClient(cfg);
+          var sys = "You write concise system prompts for AI tutor chatbots. Output ONLY the system prompt text — no commentary, no markdown code fences.";
+          var user = 'Write a system prompt for an AI tutor named "' + name + '". It must: stay scoped to the subject implied by that name, ' +
+            'politely decline out-of-scope questions, use plain concise language with short paragraphs or bullet points, ' +
+            'and end with the literal placeholder {{CONTEXT}} on its own line (extra context gets injected there at runtime).';
+          var acc = "";
+          var reply = await client.complete(
+            [{ role: "system", content: sys }, { role: "user", content: user }],
+            { onToken: function(t){ acc += t; promptEl.value = acc; } }
+          );
+          var finalText = (acc || reply || "").trim();
+          if(!finalText) throw new Error("Empty response.");
+          if(finalText.indexOf("{{CONTEXT}}") < 0) finalText += "\n{{CONTEXT}}";
+          promptEl.value = finalText;
+          generateOut.textContent = "✓ Generated — review, then click Apply."; generateOut.className = "demo-small ok";
+        }catch(err){
+          generateOut.textContent = "✗ " + (err && err.message ? err.message : "Failed to generate.");
+          generateOut.className = "demo-small";
+        }finally{
+          generateBtn.disabled = false;
+        }
+      };
 
       applyBtn.onclick = function(){
         var state = { preset: presetEl.value, name: nameEl.value, prompt: promptEl.value };
