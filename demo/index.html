@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Tutor Chat — Demo</title>
+<link rel="stylesheet" href="../tutor-chat.css">
+<style>
+  body{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+  code{ background: rgba(127,127,127,.15); padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>AI Tutor Chat — Demo</h1>
+  <p>Click the ✦ button in the bottom-right corner to open the tutor panel.</p>
+  <p>This demo uses the <code>example-cc</code> subject profile (ISC² CC exam tutor). Open Settings (⚙️) inside the panel to pick a provider:</p>
+  <ul>
+    <li><strong>Gemini</strong> — paste a free-tier API key from <a href="https://ai.google.dev" target="_blank" rel="noopener">ai.google.dev</a>.</li>
+    <li><strong>Local</strong> — point at a local OpenAI-compatible server (e.g. Ollama with <code>OLLAMA_ORIGINS="*" ollama serve</code>). Enables web search via the bundled search bridge (see <code>../search-bridge/</code>).</li>
+    <li><strong>Custom</strong> — any OpenAI-compatible Base URL.</li>
+  </ul>
+  <p><strong>Must be served over <code>http://localhost</code>, not <code>file://</code></strong> — local LLM servers block <code>file://</code> origins via CORS.</p>
+
+  <script src="../tutor-chat.js"></script>
+  <script src="../subjects/example-cc.js"></script>
+  <script>
+    TutorChat.mount(document.body, {
+      subject: window.TutorSubjects.exampleCC
+    });
+  </script>
+</body>
+</html>

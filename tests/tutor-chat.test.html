@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AI Tutor Chat — tests</title>
+<body style="font:14px monospace;padding:16px">
+<h1>AI Tutor Chat tests</h1>
+<div id="out"></div>
+<script src="../tutor-chat.js"></script>
+<script src="../subjects/example-cc.js"></script>
+<script>
+const out = document.getElementById("out");
+let pass = 0, fail = 0;
+function assert(name, cond){
+  const ok = !!cond; ok ? pass++ : fail++;
+  const row = document.createElement("div");
+  row.textContent = (ok ? "PASS  " : "FAIL  ") + name;
+  row.style.color = ok ? "green" : "red";
+  out.appendChild(row);
+}
+function eq(name, a, b){ assert(name + " (" + JSON.stringify(a) + ")", JSON.stringify(a) === JSON.stringify(b)); }
+
+// --- subject profile shape ---
+const tpl = (window.TutorSubjects.exampleCC || {}).systemTemplate || "";
+assert("example subject mentions all 5 domains",
+  /Security Principles/.test(tpl) && /Disaster Recovery/.test(tpl) &&
+  /Access Controls/.test(tpl) && /Network Security/.test(tpl) && /Security Operations/.test(tpl));
+assert("example subject has a scope guard", /decline|outside|scope/i.test(tpl));
+assert("example subject has a {{CONTEXT}} slot", tpl.indexOf("{{CONTEXT}}") >= 0);
+
+// --- prompt + message assembly ---
+const T = window.TutorChat;
+const sp = T.buildSystemPrompt("BASE {{CONTEXT}}", "INJECTED");
+eq("context injected", sp, "BASE INJECTED");
+const spEmpty = T.buildSystemPrompt("BASE {{CONTEXT}}", "");
+eq("empty context trimmed", spEmpty, "BASE");
+const msgs = T.buildMessages("SYS", [{role:"user",content:"hi",ts:1},{role:"assistant",content:"yo",ts:2}], "now");
+eq("messages length", msgs.length, 4);
+eq("system first", msgs[0], {role:"system",content:"SYS"});
+eq("history mapped (no ts)", msgs[1], {role:"user",content:"hi"});
+eq("user last", msgs[3], {role:"user",content:"now"});
+
+// --- resolvePreset / DEFAULT_PRESETS ---
+const P = T.DEFAULT_PRESETS;
+eq("gemini baseUrl", T.resolvePreset(P, "gemini").baseUrl, "https://generativelanguage.googleapis.com/v1beta/openai/");
+eq("gemini model", T.resolvePreset(P, "gemini").model, "gemini-2.5-flash");
+eq("gemini needsKey", T.resolvePreset(P, "gemini").needsKey, true);
+eq("gemini canSearch", T.resolvePreset(P, "gemini").canSearch, false);
+eq("local baseUrl", T.resolvePreset(P, "local").baseUrl, "http://localhost:11434/v1");
+eq("local model", T.resolvePreset(P, "local").model, "qwen3.5:9b");
+eq("local needsKey", T.resolvePreset(P, "local").needsKey, false);
+eq("local canSearch", T.resolvePreset(P, "local").canSearch, true);
+eq("custom is blank+flexible", T.resolvePreset(P, "custom"), {baseUrl:"",model:"",needsKey:false,canSearch:false});
+
+// --- classifyError ---
+const CE = T.classifyError;
+eq("401 -> auth", CE(null, {status:401}).kind, "auth");
+eq("403 -> auth", CE(null, {status:403}).kind, "auth");
+eq("500 -> server", CE(null, {status:500}).kind, "server");
+eq("TypeError -> cors", CE(new TypeError("Failed to fetch"), null).kind, "cors");
+eq("other -> unknown", CE(new Error("boom"), null).kind, "unknown");
+assert("auth has message", /key/i.test(CE(null,{status:401}).message));
+assert("cors has message", /CORS|browser|reachable/i.test(CE(new TypeError("x"), null).message));
+
+// --- normalizeSearchResults ---
+const NS = T.normalizeSearchResults;
+eq("empty -> []", NS({}), []);
+eq("searxng shape", NS({results:[{title:"T",url:"U",content:"C"}]}), [{title:"T",url:"U",snippet:"C"}]);
+eq("href+snippet fallbacks", NS({results:[{title:"T",href:"U2",snippet:"S"}]}), [{title:"T",url:"U2",snippet:"S"}]);
+eq("caps at 5", NS({results:[1,2,3,4,5,6,7].map(function(i){return {title:"t"+i,url:"u",content:"c"};})}).length, 5);
+
+// --- createClient (mock provider) ---
+(async function(){
+  const client = T.createClient({ baseUrl:"mock://", model:"m", apiKey:"" });
+  let streamed = "";
+  const text = await client.complete(
+    [{role:"system",content:"SYS"},{role:"user",content:"hello"}],
+    { onToken: function(t){ streamed += t; } }
+  );
+  assert("mock returns text", text.length > 0);
+  eq("streamed == final", streamed, text);
+
+  let toolCalls = 0;
+  const text2 = await client.complete(
+    [{role:"user",content:"search: zero trust"}],
+    {
+      tools: [{type:"function",function:{name:"web_search"}}],
+      runTool: async function(name, args){ toolCalls++; return "RESULTS for " + (args.query||""); },
+      onToken: function(){}
+    }
+  );
+  eq("tool invoked once", toolCalls, 1);
+  assert("final answer references results", /RESULTS|zero trust/i.test(text2));
+
+  // --- mount() works with no host globals (Store/$/esc) present ---
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const instance = T.mount(container, { subject: window.TutorSubjects.exampleCC, storageKey: "tutorchat_test" });
+  assert("mount() returns an instance with open/close/destroy", typeof instance.open === "function" && typeof instance.close === "function" && typeof instance.destroy === "function");
+  assert("mount() built a FAB button", !!container.querySelector(".tc-fab"));
+  assert("mount() built a chat panel", !!container.querySelector(".tc-panel"));
+  instance.destroy();
+  localStorage.removeItem("tutorchat_test.config");
+  localStorage.removeItem("tutorchat_test.history");
+
+  const summary = document.createElement("h2");
+  summary.textContent = `${pass} passed, ${fail} failed`;
+  summary.style.color = fail ? "red" : "green";
+  out.appendChild(summary);
+}());
+</script>
