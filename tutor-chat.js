@@ -14,6 +14,13 @@ window.TutorChat = (function(){
     custom: { baseUrl: "", model: "", needsKey: false, canSearch: false }
   };
 
+  // Local "thinking" models (e.g. Qwen3.x) can burn most/all of their output
+  // budget on internal reasoning before ever emitting a real answer. This
+  // instruction measurably cuts reasoning length (~3x shorter in testing)
+  // when appended to the system prompt. Toggled via the "Fix thinking model"
+  // setting.
+  var THINKING_FIX_HINT = "Do not overthink. Reply directly and concisely. If multiple options come to mind, pick one immediately — do not reconsider your answer more than once before responding.";
+
   function resolvePreset(presets, name){
     return (presets && presets[name]) || presets.custom || DEFAULT_PRESETS.custom;
   }
@@ -75,7 +82,7 @@ window.TutorChat = (function(){
 
     async function once(messages, opts){
       opts = opts || {};
-      var body = { model: config.model, messages: messages, stream: !!opts.onToken };
+      var body = { model: config.model, messages: messages, stream: !!opts.onToken, max_tokens: config.maxTokens || 4096 };
       if(opts.tools && opts.tools.length) body.tools = opts.tools;
       var resp;
       try{
@@ -201,6 +208,7 @@ window.TutorChat = (function(){
       '    <input class="tc-field" data-role="apiKey" type="password" placeholder="API key (blank for local)">' +
       '    <label class="tc-small tc-muted tc-checkrow"><input type="checkbox" data-role="searchOn"> Enable web search (local only)</label>' +
       '    <input class="tc-field" data-role="bridgeUrl" placeholder="Search bridge URL">' +
+      '    <label class="tc-small tc-muted tc-checkrow"><input type="checkbox" data-role="fixThinking"> 🧠 Fix thinking model (cuts reasoning time on local reasoning models e.g. Qwen3)</label>' +
       '    <div class="tc-btnrow"><button class="tc-btn" data-role="test" type="button">Test connection</button></div>' +
       '    <p class="tc-small" data-role="testOut"></p>' +
       '  </div>' +
@@ -224,7 +232,8 @@ window.TutorChat = (function(){
       model: root.querySelector('[data-role="model"]'),
       apiKey: root.querySelector('[data-role="apiKey"]'),
       searchOn: root.querySelector('[data-role="searchOn"]'),
-      bridgeUrl: root.querySelector('[data-role="bridgeUrl"]')
+      bridgeUrl: root.querySelector('[data-role="bridgeUrl"]'),
+      fixThinking: root.querySelector('[data-role="fixThinking"]')
     };
     var testBtn = root.querySelector('[data-role="test"]');
     var testOut = root.querySelector('[data-role="testOut"]');
@@ -285,6 +294,7 @@ window.TutorChat = (function(){
       log.appendChild(chatMsgEl("user", text));
 
       var sys = buildSystemPrompt(subject.systemTemplate, contextBuilder());
+      if(cfg.fixThinking) sys = sys + "\n\n" + THINKING_FIX_HINT;
       var messages = buildMessages(sys, store.getHistory().slice(0, -1).filter(function(m){ return m.role !== "error"; }), text);
 
       var preset = resolvePreset(presets, cfg.preset);
@@ -333,6 +343,7 @@ window.TutorChat = (function(){
       fields.searchOn.checked = !!c.searchOn && r.canSearch;
       fields.searchOn.disabled = !r.canSearch;
       fields.bridgeUrl.value = c.bridgeUrl || "";
+      fields.fixThinking.checked = !!c.fixThinking;
       Array.prototype.forEach.call(presetRow.children, function(b){
         b.classList.toggle("tc-btn--active", b.dataset.preset === c.preset);
       });
@@ -351,6 +362,7 @@ window.TutorChat = (function(){
     fields.apiKey.onchange = function(){ store.setConfig({ apiKey: fields.apiKey.value }); };
     fields.searchOn.onchange = function(){ store.setConfig({ searchOn: fields.searchOn.checked }); };
     fields.bridgeUrl.onchange = function(){ store.setConfig({ bridgeUrl: fields.bridgeUrl.value.trim() }); };
+    fields.fixThinking.onchange = function(){ store.setConfig({ fixThinking: fields.fixThinking.checked }); };
 
     testBtn.onclick = async function(){
       testOut.textContent = "Testing…"; testOut.className = "tc-small";
@@ -406,6 +418,7 @@ window.TutorChat = (function(){
     classifyError: classifyError,
     normalizeSearchResults: normalizeSearchResults,
     createClient: createClient,
-    DEFAULT_PRESETS: DEFAULT_PRESETS
+    DEFAULT_PRESETS: DEFAULT_PRESETS,
+    THINKING_FIX_HINT: THINKING_FIX_HINT
   };
 })();

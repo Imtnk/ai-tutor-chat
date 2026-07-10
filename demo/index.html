@@ -183,6 +183,7 @@
         try{
           var client = TutorChat.createClient(cfg);
           var sys = "You write concise system prompts for AI tutor chatbots. Output ONLY the system prompt text — no commentary, no markdown code fences.";
+          if(cfg.fixThinking) sys = sys + "\n\n" + TutorChat.THINKING_FIX_HINT;
           var user = 'Write a system prompt for an AI tutor named "' + name + '". It must: stay scoped to the subject implied by that name, ' +
             'politely decline out-of-scope questions, use plain concise language with short paragraphs or bullet points, ' +
             'and end with the literal placeholder {{CONTEXT}} on its own line (extra context gets injected there at runtime).';
