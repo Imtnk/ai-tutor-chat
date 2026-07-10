@@ -55,7 +55,7 @@
   <p>This demo uses the <code>example-cc</code> subject profile (ISC² CC exam tutor). Open Settings (⚙️) inside the panel to pick a provider:</p>
   <ul>
     <li><strong>Gemini</strong> — paste a free-tier API key from <a href="https://ai.google.dev" target="_blank" rel="noopener">ai.google.dev</a>.</li>
-    <li><strong>Local</strong> — point at a local OpenAI-compatible server (e.g. Ollama with <code>OLLAMA_ORIGINS="*" ollama serve</code>). Enables web search via the bundled search bridge (see <code>../search-bridge/</code>).</li>
+    <li><strong>Local</strong> — point at a local OpenAI-compatible server (e.g. Ollama with <code>OLLAMA_ORIGINS="*" ollama serve</code>). Enables web search via the bundled search bridge (see <code>../search-bridge/</code>). Note: the model only gets a <code>web_search</code> tool — it has no separate clock/time tool, so it doesn't inherently know the current date or time unless a search result happens to reveal it.</li>
     <li><strong>Custom</strong> — any OpenAI-compatible Base URL.</li>
   </ul>
   <p><strong>Must be served over <code>http://localhost</code>, not <code>file://</code></strong> — local LLM servers block <code>file://</code> origins via CORS.</p>
@@ -74,7 +74,10 @@
       <input class="demo-input" id="subjectName" placeholder="e.g. Spanish Tutor">
       <div class="demo-topbar" style="margin-top:10px">
         <label class="demo-label" for="subjectPrompt" style="margin:0">System prompt</label>
-        <button class="theme-toggle" id="generatePrompt" type="button" style="padding:4px 10px;font-size:12px">✨ Generate with AI</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <label class="demo-small" style="display:flex;align-items:center;gap:6px;margin:0;color:var(--demo-muted)"><input type="checkbox" id="generateFixThinking"> 🧠 Fix thinking model</label>
+          <button class="theme-toggle" id="generatePrompt" type="button" style="padding:4px 10px;font-size:12px">✨ Generate with AI</button>
+        </div>
       </div>
       <textarea class="demo-textarea" id="subjectPrompt" rows="6" placeholder="You are a tutor for &lt;SUBJECT&gt;. Answer only questions within &lt;SCOPE&gt;.&#10;Include {{CONTEXT}} somewhere to receive injected context."></textarea>
       <p class="demo-small" id="generateOut"></p>
@@ -123,7 +126,16 @@
       var out = document.getElementById("subjectApplyOut");
       var generateBtn = document.getElementById("generatePrompt");
       var generateOut = document.getElementById("generateOut");
+      var generateFixThinkingEl = document.getElementById("generateFixThinking");
       var chatInstance = null;
+
+      // Standalone toggle, scoped only to the Generate with AI request below
+      // — not linked to the chat widget's own settings or regular chat.
+      var FIX_THINKING_KEY = "tutorchat-demo-generate-fix-thinking";
+      generateFixThinkingEl.checked = localStorage.getItem(FIX_THINKING_KEY) === "1";
+      generateFixThinkingEl.onchange = function(){
+        localStorage.setItem(FIX_THINKING_KEY, generateFixThinkingEl.checked ? "1" : "0");
+      };
 
       // Reuse the AI provider the user already configured in the chat
       // panel's own Settings (⚙️) — same localStorage config the widget
@@ -183,7 +195,7 @@
         try{
           var client = TutorChat.createClient(cfg);
           var sys = "You write concise system prompts for AI tutor chatbots. Output ONLY the system prompt text — no commentary, no markdown code fences.";
-          if(cfg.fixThinking) sys = sys + "\n\n" + TutorChat.THINKING_FIX_HINT;
+          if(generateFixThinkingEl.checked) sys = sys + "\n\n" + TutorChat.THINKING_FIX_HINT;
           var user = 'Write a system prompt for an AI tutor named "' + name + '". It must: stay scoped to the subject implied by that name, ' +
             'politely decline out-of-scope questions, use plain concise language with short paragraphs or bullet points, ' +
             'and end with the literal placeholder {{CONTEXT}} on its own line (extra context gets injected there at runtime).';

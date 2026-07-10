@@ -61,7 +61,7 @@ Copy `subjects/template.js`, fill in the name and system prompt, and pass it as 
   ollama pull qwen3.5:9b
   OLLAMA_ORIGINS="*" ollama serve
   ```
-  This is the only provider path with web search enabled.
+  This is the only provider path with web search enabled. Note: the model only gets a `web_search` tool, not a clock — it doesn't inherently know the current date/time unless a search result reveals it.
 - **Custom** — any OpenAI-compatible Base URL (must send CORS headers to be reachable browser-direct).
 
 **Security note:** API keys are stored only in the browser's `localStorage` on the device you configure them on. Don't host a page with a key pre-filled publicly.
